@@ -1,0 +1,20 @@
+hosts:
+  - label: "Tokyo Office - Web Server"
+    host: "203.0.113.10"
+    ports: [80, 443]
+
+  - label: "London Office - SSH Gateway"
+    host: "198.51.100.5"
+    ports: [22]
+
+  - label: "Singapore DB Server"
+    host: "db.sg.company.internal"
+    ports: [3306, 5432]
+
+  - label: "Sydney VPN Gateway"
+    host: "vpn.au.company.com"
+    ports: [1194, 443]
+
+  - label: "Google DNS (external baseline)"
+    host: "8.8.8.8"
+    ports: [53]
