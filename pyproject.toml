@@ -1,0 +1,15 @@
+[project]
+name = "global-it-monitor"
+version = "0.1.0"
+description = "Global IT Infrastructure Monitor"
+requires-python = ">=3.11"
+dependencies = [
+    "apscheduler",
+    "loguru",
+    "python-dotenv",
+    "pyyaml",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
