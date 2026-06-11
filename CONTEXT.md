@@ -35,6 +35,27 @@ The time in milliseconds between sending a Check and receiving a response. Meani
 **Cycle**:
 One complete execution of the check loop across all Hosts. Can be triggered by the scheduler or run manually.
 
+**Alert**:
+A record indicating that an Alert Track has exceeded a severity threshold due to consecutive failures. Persisted in the `alerts` table.
+_Avoid_: Notification, incident
+
+**Alert Track**:
+The unique combination of `(host_address, check_type, port)` that threshold evaluation targets. Each Alert Track is independent — ICMP and TCP for the same host on the same port are separate tracks.
+_Avoid_: Check track (when referring to alert state)
+
+**Severity**:
+The urgency level of an Alert. Values: `WARNING` (N consecutive failures) or `CRITICAL` (M consecutive failures, where M > N). Configured globally via env vars.
+_Avoid_: Priority, level, urgency
+
+**Consecutive Failure Count**:
+The number of most recent Check Results for an Alert Track that are failures, counting backwards from the most recent until a passing result is found. A failure is `DOWN` (ICMP) or `CLOSED` (TCP). Only actual Check Result rows count — gaps do not break or extend the counter.
+
+**Auto-resolve**:
+The process by which an open Alert is closed (`resolved_at` set) when the most recent Check Result for that Alert Track has a passing status. No human intervention required.
+
+**Escalation**:
+The process by which a WARNING Alert is resolved with `reason = 'ESCALATED'` and a new CRITICAL Alert is inserted, when the Consecutive Failure Count crosses the CRITICAL threshold while a WARNING is already open.
+
 ## Relationships
 
 - A **Host** has one ICMP **Check** and one TCP **Check** per **Port**
