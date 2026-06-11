@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS check_results (
 | `MONITOR_INTERVAL_SECONDS` | `60` | Check cycle interval in seconds |
 | `MONITOR_MAX_WORKERS` | `20` | ThreadPoolExecutor max workers |
 | `MONITOR_PROBE_TIMEOUT` | `3` | Timeout per probe in seconds |
+| `MONITOR_WARNING_THRESHOLD` | `3` | Consecutive failures to trigger WARNING |
+| `MONITOR_CRITICAL_THRESHOLD` | `5` | Consecutive failures to trigger CRITICAL |
+| `MONITOR_FLAP_TRANSITIONS` | `3` | Alert rows within window to trigger FLAPPING |
+| `MONITOR_FLAP_WINDOW_MINUTES` | `10` | Rolling time window for flap detection |
+| `MONITOR_STABILISATION_THRESHOLD` | `3` | Consecutive passing results to exit FLAPPING |
 
 ## Host Config Schema (`config/hosts.yaml`)
 
