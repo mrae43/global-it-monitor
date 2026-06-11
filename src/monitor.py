@@ -2,9 +2,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from loguru import logger
 
-from src.probes.icmp import ping
-from src.probes.tcp import check_port
-from src.storage.database import save_results, init_database
+from probes.icmp import ping
+from probes.tcp import check_port
+from storage.database import save_results, init_database
 
 
 def run_checks_for_host(host_config):
