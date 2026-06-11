@@ -47,7 +47,7 @@ The current `config/loader.py` at the repo root is a stale placeholder — real 
 ## Dependencies
 
 ```
-pip install apscheduler loguru python-dotenv pyyaml
+uv sync
 ```
 
 All probe, concurrency, and storage logic uses the Python standard library. Third-party packages are only for scheduling, logging, and config.
