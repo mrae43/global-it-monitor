@@ -44,7 +44,7 @@ The unique combination of `(host_address, check_type, port)` that threshold eval
 _Avoid_: Check track (when referring to alert state)
 
 **Severity**:
-The urgency level of an Alert. Values: `WARNING` (N consecutive failures) or `CRITICAL` (M consecutive failures, where M > N). Configured globally via env vars.
+The urgency level of an Alert. Values: `WARNING` (N consecutive failures), `CRITICAL` (M consecutive failures, where M > N), or `FLAPPING` (oscillating state, terminal — no escalation). Configured globally via env vars.
 _Avoid_: Priority, level, urgency
 
 **Consecutive Failure Count**:
@@ -55,6 +55,13 @@ The process by which an open Alert is closed (`resolved_at` set) when the most r
 
 **Escalation**:
 The process by which a WARNING Alert is resolved with `reason = 'ESCALATED'` and a new CRITICAL Alert is inserted, when the Consecutive Failure Count crosses the CRITICAL threshold while a WARNING is already open.
+
+**Flapping**:
+A state where an Alert Track has produced 3 or more Alert rows within a 10-minute rolling window, indicating an unstable service. Detected during threshold evaluation; the current open Alert is resolved with `reason = 'FLAPPING'` and a new Alert with severity `FLAPPING` is inserted.
+_Avoid_: Oscillating, bouncing, unstable (when referring specifically to the FLAPPING alert state)
+
+**Stabilisation**:
+The process by which a FLAPPING Alert is resolved when its Alert Track produces 3 consecutive passing Check Results without any intervening failures. Exits flapping and returns the track to normal threshold evaluation with a clean slate.
 
 ## Relationships
 
