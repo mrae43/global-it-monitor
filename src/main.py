@@ -1,9 +1,9 @@
 import os
 import sys
 from loguru import logger
-from src.scheduler import start_scheduler
-from src.config.loader import load_config
-from src.storage.database import init_database
+from scheduler import start_scheduler
+from config.loader import load_config
+from storage.database import init_database
 
 def main():
   """Entry point"""

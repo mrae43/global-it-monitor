@@ -1,6 +1,6 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
 from loguru import logger
-from src.monitor import run_cycle
+from monitor import run_cycle
 
 
 def start_scheduler(interval, hosts, db_path):
