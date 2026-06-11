@@ -4,15 +4,20 @@ from loguru import logger
 
 from probes.icmp import ping
 from probes.tcp import check_port
-from storage.database import save_results, init_database
+from storage.database import save_results
 
 
-def run_checks_for_host(host_config):
+def run_checks_for_host(host_config, probe_timeout=3):
     """Run ICMP + all TCP checks for one host"""
     results = []
 
     # ICMP check
-    ping_result = ping(host_config['host'])
+    ping_result = ping(host_config['host'], timeout=probe_timeout)
+    logger.info(
+        f"ICMP {host_config['label']} ({host_config['host']}): "
+        f"{ping_result['status']}"
+        + (f" ({ping_result['latency_ms']}ms)" if ping_result['latency_ms'] else "")
+    )
     results.append({
         'host_label': host_config['label'],
         'host_ip': host_config['host'],
@@ -23,7 +28,12 @@ def run_checks_for_host(host_config):
 
     # TCP checks (one per port)
     for port in host_config.get('ports', []):
-        tcp_result = check_port(host_config['host'], port)
+        tcp_result = check_port(host_config['host'], port, timeout=probe_timeout)
+        logger.info(
+            f"TCP {host_config['label']} ({host_config['host']}:{port}): "
+            f"{tcp_result['status']}"
+            + (f" ({tcp_result['latency_ms']}ms)" if tcp_result['latency_ms'] else "")
+        )
         results.append({
             'host_label': host_config['label'],
             'host_ip': host_config['host'],
@@ -36,13 +46,13 @@ def run_checks_for_host(host_config):
     return results
 
 
-def run_cycle(hosts, db_path, max_workers=20):
+def run_cycle(hosts, db_path, max_workers=20, probe_timeout=3):
     """Run one complete monitoring cycle"""
     all_results = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(run_checks_for_host, host): host['label']
+            executor.submit(run_checks_for_host, host, probe_timeout): host['label']
             for host in hosts
         }
 
@@ -53,7 +63,6 @@ def run_cycle(hosts, db_path, max_workers=20):
             except Exception as e:
                 logger.warning(f"Check failed: {e}")
 
-    init_database(db_path)
     save_results(db_path, all_results)
 
     up_count = sum(1 for r in all_results if r['status'] in ['UP', 'OPEN'])

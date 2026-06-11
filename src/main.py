@@ -34,7 +34,10 @@ def main():
   logger.info("Global IT Infrastructure Monitor starting...")
 
   # Start the scheduler (blocking)
-  start_scheduler(config['interval'], config['hosts'], config['db_path'])
+  start_scheduler(
+      config['interval'], config['hosts'], config['db_path'],
+      config['max_workers'], config['probe_timeout']
+  )
 
 if __name__ == "__main__":
   main()
