@@ -2,25 +2,26 @@
 
 ## Project Status
 
-Phase 1 is **not yet implemented** — only design docs exist. The authoritative specs are:
+Phase 1 is **implemented**. The authoritative specs are:
 - `docs/PRD/monitoring-loop-PRD.md` — requirements, data design, config design, project structure
 - `docs/ADR/monitoring-loop-ADR.md` — architectural decisions and rationale (12 ADRs)
 
 If code and docs conflict, the ADR/PRD are the source of truth. Follow them unless you have a concrete reason to deviate.
 
-## Project Structure (Planned)
+## Project Structure (Implemented)
 
 ```
 src/
-  main.py              # Entry point — starts scheduler
-  scheduler.py         # APScheduler setup + cycle runner
+  main.py              # Entry point — loads config, init DB, starts scheduler
+  scheduler.py         # APScheduler BlockingScheduler + cycle runner
+  monitor.py           # Orchestrates one full check cycle (ThreadPoolExecutor)
   probes/
     icmp.py            # ICMP ping via subprocess + OS ping
     tcp.py             # TCP port check via socket.connect_ex()
   storage/
-    database.py         # SQLite read/write via sqlite3 (no ORM)
+    database.py        # SQLite read/write via sqlite3 (no ORM)
   config/
-    loader.py           # .env + YAML config loading
+    loader.py          # .env + YAML config loading
 config/
   hosts.yaml            # Host targets (committed, no secrets)
 .env                    # Secrets & settings (gitignored)
@@ -29,9 +30,11 @@ tests/
   test_icmp.py
   test_tcp.py
   test_database.py
+  test_config_loader.py
+  test_main.py
+  test_monitor.py
+  test_scheduler.py
 ```
-
-The current `config/loader.py` at the repo root is a stale placeholder — real config loading code belongs in `src/config/loader.py`.
 
 ## Key Architectural Decisions
 
