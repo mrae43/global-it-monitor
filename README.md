@@ -9,16 +9,15 @@ This is **Phase 1** (Core Monitoring Loop) of a 4-phase project. No alerting, da
 ```bash
 git clone <repo>
 cd global-it-monitor
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 cp .env.example .env
-python src/main.py
+uv run python src/main.py
 ```
 
 ## Dependencies
 
 ```
-pip install apscheduler loguru python-dotenv pyyaml
+uv sync
 ```
 
 All probe, concurrency, and storage logic uses the Python standard library (`subprocess`, `socket`, `concurrent.futures`, `sqlite3`). Third-party packages are only for scheduling, logging, and config loading.
@@ -53,6 +52,7 @@ global-it-monitor/
 ├── src/
 │   ├── main.py               # Entry point — starts scheduler
 │   ├── scheduler.py          # APScheduler setup + cycle runner
+│   ├── monitor.py            # Orchestrates one full check cycle
 │   ├── probes/
 │   │   ├── icmp.py           # ICMP ping via subprocess + OS ping
 │   │   └── tcp.py            # TCP port check via socket.connect_ex()
@@ -63,9 +63,14 @@ global-it-monitor/
 ├── tests/
 │   ├── test_icmp.py
 │   ├── test_tcp.py
-│   └── test_database.py
+│   ├── test_database.py
+│   ├── test_config_loader.py
+│   ├── test_main.py
+│   ├── test_monitor.py
+│   └── test_scheduler.py
 ├── .env.example
-├── requirements.txt
+├── pyproject.toml
+├── uv.lock
 └── README.md
 ```
 
