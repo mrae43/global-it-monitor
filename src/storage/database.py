@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from datetime import datetime, timezone
+from typing import Any
 
 CREATE_TABLE_SQL = """CREATE TABLE IF NOT EXISTS check_results (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -13,16 +14,26 @@ CREATE_TABLE_SQL = """CREATE TABLE IF NOT EXISTS check_results (
     latency_ms  REAL
 );"""
 
-def init_database(db_path):
-    """Create schema if it doesn't exist"""
+def init_database(db_path: str) -> None:
+    """Create the SQLite database and schema if they don't exist.
+
+    Args:
+        db_path: Path to the SQLite database file.
+    """
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.execute(CREATE_TABLE_SQL)
     conn.commit()
     conn.close()
 
-def save_results(db_path, results):
-    """Insert results from a single cycle"""
+def save_results(db_path: str, results: list[dict[str, Any]]) -> None:
+    """Insert check results from a single monitoring cycle.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        results: List of result dicts with keys host_label, host_ip, check_type,
+                 port (optional), status, latency_ms (optional).
+    """
     conn = sqlite3.connect(db_path)
     conn.execute(CREATE_TABLE_SQL)
     for r in results:
@@ -42,8 +53,15 @@ def save_results(db_path, results):
     conn.commit()
     conn.close()
 
-def query_latest(db_path):
-    """Get most recent result per host"""
+def query_latest(db_path: str) -> list[tuple]:
+    """Get the most recent result per host/check-type/port combination.
+
+    Args:
+        db_path: Path to the SQLite database file.
+
+    Returns:
+        List of tuples (host_label, status, latency_ms, checked_at).
+    """
     conn = sqlite3.connect(db_path)
     try:
         cursor = conn.execute("""

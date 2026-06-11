@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from loguru import logger
 
@@ -7,8 +8,16 @@ from probes.tcp import check_port
 from storage.database import save_results
 
 
-def run_checks_for_host(host_config, probe_timeout=3):
-    """Run ICMP + all TCP checks for one host"""
+def run_checks_for_host(host_config: dict[str, Any], probe_timeout: int = 3) -> list[dict[str, Any]]:
+    """Run ICMP ping and TCP port checks for a single host.
+
+    Args:
+        host_config: Host configuration dict with keys 'label', 'host', 'ports'.
+        probe_timeout: Timeout in seconds per probe.
+
+    Returns:
+        List of result dicts, one for ICMP and one per TCP port.
+    """
     results = []
 
     # ICMP check
@@ -46,8 +55,15 @@ def run_checks_for_host(host_config, probe_timeout=3):
     return results
 
 
-def run_cycle(hosts, db_path, max_workers=20, probe_timeout=3):
-    """Run one complete monitoring cycle"""
+def run_cycle(hosts: list[dict[str, Any]], db_path: str, max_workers: int = 20, probe_timeout: int = 3) -> None:
+    """Run one complete monitoring cycle across all hosts.
+
+    Args:
+        hosts: List of host configuration dicts.
+        db_path: Path to the SQLite database file.
+        max_workers: Maximum thread pool workers.
+        probe_timeout: Timeout in seconds per probe.
+    """
     all_results = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
