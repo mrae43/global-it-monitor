@@ -1,10 +1,22 @@
+from typing import Any
+
 from apscheduler.schedulers.blocking import BlockingScheduler
 from loguru import logger
 from monitor import run_cycle
 
 
-def start_scheduler(interval, hosts, db_path, max_workers=20, probe_timeout=3):
-    """Start the monitoring loop with APScheduler"""
+def start_scheduler(interval: int, hosts: list[dict[str, Any]], db_path: str, max_workers: int = 20, probe_timeout: int = 3) -> None:
+    """Start the APScheduler monitoring loop.
+
+    Fires an initial cycle immediately, then schedules recurring cycles at the given interval.
+
+    Args:
+        interval: Seconds between cycles.
+        hosts: List of host configuration dicts.
+        db_path: Path to the SQLite database file.
+        max_workers: Maximum thread pool workers.
+        probe_timeout: Timeout in seconds per probe.
+    """
     scheduler = BlockingScheduler()
     scheduler.add_job(
         run_cycle,

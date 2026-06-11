@@ -1,10 +1,11 @@
 import socket
 import time
+from typing import Any
 
 from loguru import logger
 
 
-def check_port(host: str, port: int, timeout: float = 3) -> dict:
+def check_port(host: str, port: int, timeout: float = 3) -> dict[str, Any]:
     """
     Attempts a TCP connection to host:port using the built-in socket module.
 

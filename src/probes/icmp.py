@@ -1,11 +1,12 @@
 import subprocess
 import platform
 import re
+from typing import Any
 
 from loguru import logger
 
 
-def ping(host: str, timeout: int = 3) -> dict:
+def ping(host: str, timeout: int = 3) -> dict[str, Any]:
     """
     Send one ICMP echo request to the host using the OS ping binary.
 
