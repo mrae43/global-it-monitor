@@ -205,37 +205,50 @@ def run_cycle(hosts: list[dict[str, Any]], db_path: str, config: dict[str, Any])
         db_path: Path to the SQLite database file.
         config: Full application configuration dict.
     """
-    all_results = []
-    probe_timeout = config.get('probe_timeout', 3)
-    max_workers = config.get('max_workers', 20)
+    try:
+        all_results = []
+        probe_timeout = config.get('probe_timeout', 3)
+        max_workers = config.get('max_workers', 20)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(run_checks_for_host, host, probe_timeout): host['label']
-            for host in hosts
-        }
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(run_checks_for_host, host, probe_timeout): host['label']
+                for host in hosts
+            }
 
-        for future in as_completed(futures):
-            try:
-                results = future.result()
-                all_results.extend(results)
-            except Exception as e:
-                logger.warning(f"Check failed: {e}")
+            for future in as_completed(futures):
+                try:
+                    results = future.result()
+                    all_results.extend(results)
+                except Exception as e:
+                    logger.warning(f"Check failed: {e}")
 
-    save_results(db_path, all_results)
+        try:
+            save_results(db_path, all_results)
+        except Exception as e:
+            logger.error(f"Failed to save check results: {e}")
 
-    up_count = sum(1 for r in all_results if r['status'] in ['UP', 'OPEN'])
-    down_count = len(all_results) - up_count
-    logger.info(f"Cycle complete: {len(all_results)} checks, {up_count} UP, {down_count} DOWN")
+        up_count = sum(1 for r in all_results if r['status'] in ['UP', 'OPEN'])
+        down_count = len(all_results) - up_count
+        logger.info(f"Cycle complete: {len(all_results)} checks, {up_count} UP, {down_count} DOWN")
 
-    # Evaluate alerts
-    alert_actions = evaluate_alerts(db_path, all_results, config)
-    if alert_actions['fired'] or alert_actions['escalated'] or alert_actions['resolved'] or alert_actions['flapped'] or alert_actions['stabilised']:
-        logger.info(
-            f"Alert summary: {len(alert_actions['fired'])} fired "
-            f"({alert_actions['fired'].count('WARNING')} WARNING, {alert_actions['fired'].count('CRITICAL')} CRITICAL), "
-            f"{alert_actions['escalated']} escalated, "
-            f"{alert_actions['resolved']} resolved, "
-            f"{alert_actions['flapped']} flapped, "
-            f"{alert_actions['stabilised']} stabilised"
-        )
+        # Evaluate alerts
+        try:
+            alert_actions = evaluate_alerts(db_path, all_results, config)
+        except Exception as e:
+            logger.error(f"Alert evaluation failed: {e}")
+            alert_actions = {
+                'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0
+            }
+
+        if alert_actions['fired'] or alert_actions['escalated'] or alert_actions['resolved'] or alert_actions['flapped'] or alert_actions['stabilised']:
+            logger.info(
+                f"Alert summary: {len(alert_actions['fired'])} fired "
+                f"({alert_actions['fired'].count('WARNING')} WARNING, {alert_actions['fired'].count('CRITICAL')} CRITICAL), "
+                f"{alert_actions['escalated']} escalated, "
+                f"{alert_actions['resolved']} resolved, "
+                f"{alert_actions['flapped']} flapped, "
+                f"{alert_actions['stabilised']} stabilised"
+            )
+    except Exception as e:
+        logger.error(f"Monitoring cycle failed: {e}")
