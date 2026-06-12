@@ -2,6 +2,7 @@ import os
 from typing import Any
 
 from dotenv import load_dotenv
+from loguru import logger
 import yaml
 
 
@@ -76,19 +77,19 @@ def load_hosts(path: str = 'config/hosts.yaml') -> list[dict[str, Any]]:
         with open(path) as f:
             data = yaml.safe_load(f)
     except FileNotFoundError:
-        print(f"ERROR: Host config not found at {path}")
+        logger.error(f"Host config not found at {path}")
         return []
     except yaml.YAMLError as e:
-        print(f"ERROR: Malformed YAML in {path}: {e}")
+        logger.error(f"Malformed YAML in {path}: {e}")
         return []
 
     if data is None:
-        print(f"WARNING: {path} is empty — no hosts configured")
+        logger.warning(f"{path} is empty — no hosts configured")
         return []
 
     hosts_raw = data.get('hosts', [])
     if not hosts_raw:
-        print(f"WARNING: No hosts defined in {path}")
+        logger.warning(f"No hosts defined in {path}")
         return []
 
     valid_hosts = []
@@ -98,13 +99,13 @@ def load_hosts(path: str = 'config/hosts.yaml') -> list[dict[str, Any]]:
         ports = entry.get('ports')
 
         if not label or not isinstance(label, str):
-            print(f"WARNING: host entry {i} missing or invalid 'label' — skipping")
+            logger.warning(f"host entry {i} missing or invalid 'label' — skipping")
             continue
         if not host or not isinstance(host, str):
-            print(f"WARNING: host entry {i} ('{label}') missing or invalid 'host' — skipping")
+            logger.warning(f"host entry {i} ('{label}') missing or invalid 'host' — skipping")
             continue
         if not ports or not isinstance(ports, list) or not all(isinstance(p, int) for p in ports):
-            print(f"WARNING: host entry {i} ('{label}') missing or invalid 'ports' — skipping")
+            logger.warning(f"host entry {i} ('{label}') missing or invalid 'ports' — skipping")
             continue
 
         valid_hosts.append({'label': label, 'host': host, 'ports': ports})
