@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-from src.monitor import run_checks_for_host, run_cycle
+from src.monitor import run_checks_for_host, run_cycle, evaluate_alerts, evaluate_track
 
 
 class TestRunChecksForHost(unittest.TestCase):
@@ -19,10 +19,12 @@ class TestRunChecksForHost(unittest.TestCase):
         self.assertEqual(results[0]['check_type'], 'ICMP')
         self.assertEqual(results[0]['status'], 'UP')
         self.assertEqual(results[0]['latency_ms'], 12.5)
+        self.assertEqual(results[0]['host_address'], '10.0.0.1')
         self.assertEqual(results[1]['check_type'], 'TCP')
         self.assertEqual(results[1]['port'], 80)
         self.assertEqual(results[1]['status'], 'OPEN')
         self.assertEqual(results[1]['latency_ms'], 20.0)
+        self.assertEqual(results[1]['host_address'], '10.0.0.1')
 
     @patch('src.monitor.check_port')
     @patch('src.monitor.ping')
@@ -80,51 +82,63 @@ class TestRunChecksForHost(unittest.TestCase):
 
 class TestRunCycle(unittest.TestCase):
 
+    @patch('src.monitor.evaluate_alerts')
     @patch('src.monitor.save_results')
     @patch('src.monitor.ping')
     @patch('src.monitor.check_port')
-    def test_all_hosts_checked(self, mock_check_port, mock_ping, mock_save_results):
+    def test_all_hosts_checked(self, mock_check_port, mock_ping, mock_save_results, mock_evaluate_alerts):
         mock_ping.return_value = {'status': 'UP', 'latency_ms': 10.0}
         mock_check_port.return_value = {'status': 'OPEN', 'latency_ms': 5.0}
+        mock_evaluate_alerts.return_value = {'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0}
 
         hosts = [
             {'label': 'H1', 'host': '10.0.0.1', 'ports': [80]},
             {'label': 'H2', 'host': '10.0.0.2', 'ports': [443]},
         ]
-        run_cycle(hosts, 'test.db', max_workers=5, probe_timeout=2)
+        config = {'interval': 60, 'max_workers': 5, 'probe_timeout': 2, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
+        run_cycle(hosts, 'test.db', config)
 
         mock_save_results.assert_called_once()
         all_results = mock_save_results.call_args[0][1]
         self.assertEqual(len(all_results), 4)
         self.assertEqual(mock_save_results.call_args[0][0], 'test.db')
 
+    @patch('src.monitor.evaluate_alerts')
     @patch('src.monitor.save_results')
-    def test_empty_hosts(self, mock_save_results):
-        run_cycle([], 'test.db')
+    def test_empty_hosts(self, mock_save_results, mock_evaluate_alerts):
+        mock_evaluate_alerts.return_value = {'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0}
+        config = {'interval': 60, 'max_workers': 20, 'probe_timeout': 3, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
+        run_cycle([], 'test.db', config)
         mock_save_results.assert_called_once_with('test.db', [])
 
+    @patch('src.monitor.evaluate_alerts')
     @patch('src.monitor.save_results')
     @patch('src.monitor.run_checks_for_host')
-    def test_future_exception_logged(self, mock_run_checks, mock_save_results):
+    def test_future_exception_logged(self, mock_run_checks, mock_save_results, mock_evaluate_alerts):
         mock_run_checks.side_effect = Exception('host failed')
+        mock_evaluate_alerts.return_value = {'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0}
 
         with patch('src.monitor.logger') as mock_logger:
             hosts = [{'label': 'H1', 'host': '10.0.0.1', 'ports': [80]}]
-            run_cycle(hosts, 'test.db')
+            config = {'interval': 60, 'max_workers': 20, 'probe_timeout': 3, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
+            run_cycle(hosts, 'test.db', config)
 
         mock_save_results.assert_called_once_with('test.db', [])
         mock_logger.warning.assert_called()
 
+    @patch('src.monitor.evaluate_alerts')
     @patch('src.monitor.save_results')
     @patch('src.monitor.ping')
     @patch('src.monitor.check_port')
-    def test_summary_logged(self, mock_check_port, mock_ping, mock_save_results):
+    def test_summary_logged(self, mock_check_port, mock_ping, mock_save_results, mock_evaluate_alerts):
         mock_ping.return_value = {'status': 'UP', 'latency_ms': 10.0}
         mock_check_port.return_value = {'status': 'CLOSED', 'latency_ms': None}
+        mock_evaluate_alerts.return_value = {'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0}
 
         with patch('src.monitor.logger') as mock_logger:
             hosts = [{'label': 'H1', 'host': '10.0.0.1', 'ports': [80]}]
-            run_cycle(hosts, 'test.db')
+            config = {'interval': 60, 'max_workers': 20, 'probe_timeout': 3, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
+            run_cycle(hosts, 'test.db', config)
 
         log_calls = [call.args[0] for call in mock_logger.info.call_args_list]
         self.assertTrue(
@@ -132,15 +146,18 @@ class TestRunCycle(unittest.TestCase):
             f"Expected summary in log calls: {log_calls}"
         )
 
+    @patch('src.monitor.evaluate_alerts')
     @patch('src.monitor.save_results')
     @patch('src.monitor.ping')
     @patch('src.monitor.check_port')
-    def test_uses_max_workers(self, mock_check_port, mock_ping, mock_save_results):
+    def test_uses_max_workers(self, mock_check_port, mock_ping, mock_save_results, mock_evaluate_alerts):
         from concurrent.futures import Future
         mock_ping.return_value = {'status': 'UP', 'latency_ms': 1.0}
         mock_check_port.return_value = {'status': 'OPEN', 'latency_ms': 1.0}
+        mock_evaluate_alerts.return_value = {'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0}
 
         hosts = [{'label': 'H1', 'host': '10.0.0.1', 'ports': [80]}]
+        config = {'interval': 60, 'max_workers': 5, 'probe_timeout': 3, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
         with patch('src.monitor.ThreadPoolExecutor') as mock_executor_cls:
             mock_executor = MagicMock()
             mock_executor_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
@@ -153,7 +170,7 @@ class TestRunCycle(unittest.TestCase):
                 return f
 
             mock_executor.submit = mock_submit
-            run_cycle(hosts, 'test.db', max_workers=5)
+            run_cycle(hosts, 'test.db', config)
             mock_executor_cls.assert_called_once_with(max_workers=5)
 
 
