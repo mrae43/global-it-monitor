@@ -3,7 +3,21 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.storage.database import init_database, save_results, query_latest, CREATE_TABLE_SQL
+from src.storage.database import (
+    init_database,
+    save_results,
+    query_latest,
+    CREATE_TABLE_SQL,
+    count_consecutive_failures,
+    count_consecutive_passes,
+    count_recent_alerts,
+    get_open_alerts,
+    get_open_alert_for_track,
+    get_open_flapping_alert,
+    insert_alert,
+    resolve_alert,
+    resolve_all_open_alerts_for_track,
+)
 
 
 class TestDatabase(unittest.TestCase):
@@ -25,6 +39,7 @@ class TestDatabase(unittest.TestCase):
         tables = [row[0] for row in cursor.fetchall()]
         conn.close()
         self.assertIn('check_results', tables)
+        self.assertIn('alerts', tables)
 
     def test_init_database_creates_parent_dir(self):
         nested = os.path.join(self.tmp_dir, 'nested', 'deep', 'test.db')
@@ -42,13 +57,14 @@ class TestDatabase(unittest.TestCase):
         tables = [row[0] for row in cursor.fetchall()]
         conn.close()
         self.assertIn('check_results', tables)
+        self.assertIn('alerts', tables)
 
     def test_save_results_inserts_rows(self):
         init_database(self.db_path)
         results = [
             {
                 'host_label': 'Test Host',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'UP',
                 'latency_ms': 12.3
@@ -66,7 +82,7 @@ class TestDatabase(unittest.TestCase):
         results = [
             {
                 'host_label': 'Test Host',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'UP',
                 'latency_ms': 12.3
@@ -84,14 +100,14 @@ class TestDatabase(unittest.TestCase):
         results = [
             {
                 'host_label': 'Host A',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'UP',
                 'latency_ms': 10.0
             },
             {
                 'host_label': 'Host B',
-                'host_ip': '1.1.1.1',
+                'host_address': '1.1.1.1',
                 'check_type': 'TCP',
                 'port': 443,
                 'status': 'OPEN',
@@ -110,7 +126,7 @@ class TestDatabase(unittest.TestCase):
         results = [
             {
                 'host_label': 'Test Host',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'UP',
                 'latency_ms': 12.3
@@ -128,7 +144,7 @@ class TestDatabase(unittest.TestCase):
         results = [
             {
                 'host_label': 'Test Host',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'DOWN',
                 'latency_ms': None
@@ -146,7 +162,7 @@ class TestDatabase(unittest.TestCase):
         results = [
             {
                 'host_label': 'Test Host',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'UP',
                 'latency_ms': 12.3
@@ -171,7 +187,7 @@ class TestDatabase(unittest.TestCase):
         results1 = [
             {
                 'host_label': 'Host A',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'UP',
                 'latency_ms': 10.0
@@ -180,7 +196,7 @@ class TestDatabase(unittest.TestCase):
         results2 = [
             {
                 'host_label': 'Host A',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'DOWN',
                 'latency_ms': None
@@ -193,19 +209,19 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(rows[0][1], 'DOWN')
         self.assertIsNone(rows[0][2])
 
-    def test_query_latest_grouped_by_host_ip_check_type_port(self):
+    def test_query_latest_grouped_by_host_address_check_type_port(self):
         init_database(self.db_path)
         results = [
             {
                 'host_label': 'Host A',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'ICMP',
                 'status': 'UP',
                 'latency_ms': 10.0
             },
             {
                 'host_label': 'Host A',
-                'host_ip': '8.8.8.8',
+                'host_address': '8.8.8.8',
                 'check_type': 'TCP',
                 'port': 443,
                 'status': 'OPEN',
@@ -213,7 +229,7 @@ class TestDatabase(unittest.TestCase):
             },
             {
                 'host_label': 'Host B',
-                'host_ip': '1.1.1.1',
+                'host_address': '1.1.1.1',
                 'check_type': 'ICMP',
                 'status': 'DOWN',
                 'latency_ms': None
@@ -240,9 +256,137 @@ class TestCreateTableSql(unittest.TestCase):
         self.assertIn('CREATE TABLE IF NOT EXISTS check_results', CREATE_TABLE_SQL)
 
     def test_create_table_sql_has_all_columns(self):
-        required = ['id', 'checked_at', 'host_label', 'host_ip', 'check_type', 'port', 'status', 'latency_ms']
+        required = ['id', 'checked_at', 'host_label', 'host_address', 'check_type', 'port', 'status', 'latency_ms']
         for col in required:
             self.assertIn(col, CREATE_TABLE_SQL)
+
+
+class TestAlertsTable(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp_dir, 'test.db')
+        init_database(self.db_path)
+
+    def tearDown(self):
+        if os.path.exists(self.db_path):
+            os.unlink(self.db_path)
+        os.rmdir(self.tmp_dir)
+
+    def test_alerts_table_created(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        self.assertIn('alerts', tables)
+
+    def test_alerts_table_columns(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute("PRAGMA table_info(alerts)")
+        columns = [row[1] for row in cursor.fetchall()]
+        conn.close()
+        required = ['id', 'triggered_at', 'host_label', 'host_address', 'check_type', 'port', 'severity', 'resolved_at', 'resolved_reason']
+        for col in required:
+            self.assertIn(col, columns)
+
+    def test_insert_alert(self):
+        alert_id = insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        self.assertIsInstance(alert_id, int)
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute("SELECT COUNT(*) FROM alerts")
+        count = cursor.fetchone()[0]
+        conn.close()
+        self.assertEqual(count, 1)
+
+    def test_get_open_alerts(self):
+        insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        alerts = get_open_alerts(self.db_path)
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]['host_label'], 'Host A')
+        self.assertEqual(alerts[0]['severity'], 'WARNING')
+        self.assertIsNone(alerts[0]['resolved_at'])
+
+    def test_get_open_alerts_filtered(self):
+        insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        insert_alert(self.db_path, 'Host B', '1.1.1.1', 'TCP', 443, 'CRITICAL')
+        alerts = get_open_alerts(self.db_path, host_address='8.8.8.8')
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]['host_label'], 'Host A')
+
+    def test_get_open_alert_for_track(self):
+        insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        alert = get_open_alert_for_track(self.db_path, '8.8.8.8', 'ICMP', None)
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert['severity'], 'WARNING')
+
+    def test_get_open_alert_for_track_none(self):
+        alert = get_open_alert_for_track(self.db_path, '8.8.8.8', 'ICMP', None)
+        self.assertIsNone(alert)
+
+    def test_get_open_flapping_alert(self):
+        insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'FLAPPING')
+        flapping = get_open_flapping_alert(self.db_path, '8.8.8.8', 'ICMP', None)
+        self.assertIsNotNone(flapping)
+        self.assertEqual(flapping['severity'], 'FLAPPING')
+
+    def test_resolve_alert(self):
+        alert_id = insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        resolve_alert(self.db_path, alert_id, 'RECOVERED')
+        alerts = get_open_alerts(self.db_path)
+        self.assertEqual(len(alerts), 0)
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute("SELECT resolved_at, resolved_reason FROM alerts WHERE id = ?", (alert_id,))
+        row = cursor.fetchone()
+        conn.close()
+        self.assertIsNotNone(row[0])
+        self.assertEqual(row[1], 'RECOVERED')
+
+    def test_resolve_all_open_alerts_for_track(self):
+        insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        insert_alert(self.db_path, 'Host A', '8.8.8.8', 'ICMP', None, 'WARNING')
+        count = resolve_all_open_alerts_for_track(self.db_path, '8.8.8.8', 'ICMP', None, 'FLAPPING')
+        self.assertEqual(count, 2)
+        alerts = get_open_alerts(self.db_path)
+        self.assertEqual(len(alerts), 0)
+
+    def test_count_consecutive_failures(self):
+        # Insert 3 failures then 1 pass
+        for _ in range(3):
+            save_results(self.db_path, [
+                {'host_label': 'H', 'host_address': '8.8.8.8', 'check_type': 'ICMP', 'status': 'DOWN', 'latency_ms': None}
+            ])
+        save_results(self.db_path, [
+            {'host_label': 'H', 'host_address': '8.8.8.8', 'check_type': 'ICMP', 'status': 'UP', 'latency_ms': 1.0}
+        ])
+        count = count_consecutive_failures(self.db_path, '8.8.8.8', 'ICMP', None, 5)
+        self.assertEqual(count, 0)
+        # Insert 3 more failures
+        for _ in range(3):
+            save_results(self.db_path, [
+                {'host_label': 'H', 'host_address': '8.8.8.8', 'check_type': 'ICMP', 'status': 'DOWN', 'latency_ms': None}
+            ])
+        count = count_consecutive_failures(self.db_path, '8.8.8.8', 'ICMP', None, 5)
+        self.assertEqual(count, 3)
+
+    def test_count_consecutive_passes(self):
+        for _ in range(3):
+            save_results(self.db_path, [
+                {'host_label': 'H', 'host_address': '8.8.8.8', 'check_type': 'ICMP', 'status': 'UP', 'latency_ms': 1.0}
+            ])
+        count = count_consecutive_passes(self.db_path, '8.8.8.8', 'ICMP', None, 5)
+        self.assertEqual(count, 3)
+
+    def test_count_recent_alerts(self):
+        insert_alert(self.db_path, 'H', '8.8.8.8', 'ICMP', None, 'WARNING')
+        insert_alert(self.db_path, 'H', '8.8.8.8', 'ICMP', None, 'WARNING')
+        count = count_recent_alerts(self.db_path, '8.8.8.8', 'ICMP', None, 10)
+        self.assertEqual(count, 2)
+
+    def test_count_recent_alerts_different_track(self):
+        insert_alert(self.db_path, 'H', '8.8.8.8', 'ICMP', None, 'WARNING')
+        count = count_recent_alerts(self.db_path, '8.8.8.8', 'TCP', 443, 10)
+        self.assertEqual(count, 0)
 
 
 if __name__ == '__main__':
