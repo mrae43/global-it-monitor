@@ -2,9 +2,11 @@
 
 ## Project Status
 
-Phase 1 is **implemented**. The authoritative specs are:
-- `docs/PRD/monitoring-loop-PRD.md` — requirements, data design, config design, project structure
-- `docs/ADR/monitoring-loop-ADR.md` — architectural decisions and rationale (12 ADRs)
+Phase 1 and Phase 2 are **implemented**. The authoritative specs are:
+- `docs/PRD/monitoring-loop-PRD.md` — Phase 1 requirements, data design, config design, project structure
+- `docs/ADR/monitoring-loop-ADR.md` — Phase 1 architectural decisions and rationale (12 ADRs)
+- `docs/PRD/alert-engine-PRD.md` — Phase 2 requirements, schema, flow
+- `docs/ADR/alert-engine-ADR.md` — Phase 2 architectural decisions and rationale (5 ADRs)
 
 If code and docs conflict, the ADR/PRD are the source of truth. Follow them unless you have a concrete reason to deviate.
 
@@ -12,16 +14,17 @@ If code and docs conflict, the ADR/PRD are the source of truth. Follow them unle
 
 ```
 src/
-  main.py              # Entry point — loads config, init DB, starts scheduler
+  main.py              # Entry point — loads config, validates alerts, init DB, starts scheduler
   scheduler.py         # APScheduler BlockingScheduler + cycle runner
-  monitor.py           # Orchestrates one full check cycle (ThreadPoolExecutor)
+  monitor.py           # Orchestrates one full check cycle (ThreadPoolExecutor) + alert engine
   probes/
     icmp.py            # ICMP ping via subprocess + OS ping
     tcp.py             # TCP port check via socket.connect_ex()
   storage/
+    __init__.py        # Package marker
     database.py        # SQLite read/write via sqlite3 (no ORM)
   config/
-    loader.py          # .env + YAML config loading
+    loader.py          # .env + YAML config loading + alert validation
 config/
   hosts.yaml            # Host targets (committed, no secrets)
 .env                    # Secrets & settings (gitignored)
@@ -34,6 +37,7 @@ tests/
   test_main.py
   test_monitor.py
   test_scheduler.py
+  test_alert_engine.py  # Phase 2 alert engine tests
 ```
 
 ## Key Architectural Decisions
@@ -42,7 +46,9 @@ tests/
 - **TCP**: Use `socket.connect_ex()` (returns int, no exception). Always close sockets in a `finally` block.
 - **Concurrency**: `ThreadPoolExecutor` (not `asyncio`, not `threading.Thread`). Each host's ICMP + all TCP ports are one unit of work.
 - **Scheduler**: `APScheduler` with `BlockingScheduler` and `max_instances=1` to prevent cycle overlap.
-- **Storage**: Raw `sqlite3` (no ORM). Append-only INSERT — no UPDATE or DELETE. Single `check_results` table, no `hosts` table (denormalized).
+- **Storage**: Raw `sqlite3` (no ORM). Append-only INSERT — no UPDATE or DELETE on `check_results`. Single `check_results` table + `alerts` table.
+- **Alert Engine**: Stateless threshold evaluation — queries `check_results` each cycle, counts consecutive failures. No in-memory counters. Lives in `src/monitor.py`.
+- **Alert Lifecycle**: Escalation-with-promotion (resolve WARNING as ESCALATED, insert CRITICAL). Auto-resolve on 1 passing result. Flap detection → FLAPPING severity, stabilisation after 3 consecutive passes.
 - **Timestamps**: Always `datetime.now(timezone.utc).isoformat()`. Never `datetime.utcnow()` — it returns naive datetimes.
 - **Logging**: `loguru` (not stdlib `logging`). Initialized once in `src/main.py`, imported elsewhere.
 - **Config**: `python-dotenv` for `.env`, `PyYAML` for `config/hosts.yaml`. Loaded at startup only, no hot-reload.
@@ -53,22 +59,50 @@ tests/
 uv sync
 ```
 
-All probe, concurrency, and storage logic uses the Python standard library. Third-party packages are only for scheduling, logging, and config.
+All probe, concurrency, storage, and alert logic uses the Python standard library. Third-party packages are only for scheduling, logging, and config.
 
 ## SQLite Schema
+
+### `check_results` table
 
 ```sql
 CREATE TABLE IF NOT EXISTS check_results (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     checked_at  TEXT NOT NULL,
     host_label  TEXT NOT NULL,
-    host_ip     TEXT NOT NULL,
+    host_address TEXT NOT NULL,
     check_type  TEXT NOT NULL,   -- 'ICMP' or 'TCP'
     port        INTEGER,          -- NULL for ICMP
     status      TEXT NOT NULL,    -- 'UP'|'DOWN'|'OPEN'|'CLOSED'
     latency_ms  REAL              -- NULL if unreachable
 );
+
+CREATE INDEX IF NOT EXISTS idx_check_results_track_time
+  ON check_results(host_address, check_type, port, checked_at DESC);
 ```
+
+### `alerts` table (Phase 2)
+
+```sql
+CREATE TABLE IF NOT EXISTS alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    triggered_at    TEXT NOT NULL,
+    host_label      TEXT NOT NULL,
+    host_address    TEXT NOT NULL,
+    check_type      TEXT NOT NULL,
+    port            INTEGER,
+    severity        TEXT NOT NULL,   -- 'WARNING' | 'CRITICAL' | 'FLAPPING'
+    resolved_at     TEXT,            -- NULL means open
+    resolved_reason TEXT             -- 'RECOVERED' | 'ESCALATED' | 'FLAPPING' | NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_track_time
+  ON alerts(host_address, check_type, port, triggered_at DESC);
+```
+
+- `alerts` is **append-dominated but NOT strictly append-only** — `UPDATE alerts SET resolved_at = ...` is the only write mutation. `check_results` retains its strict append-only contract.
+- At most one open alert per track at any time.
+- `host_address` is the canonical column name (renamed from `host_ip` in Phase 1).
 
 ## Environment Variables
 
@@ -85,6 +119,12 @@ CREATE TABLE IF NOT EXISTS check_results (
 | `MONITOR_FLAP_WINDOW_MINUTES` | `10` | Rolling time window for flap detection |
 | `MONITOR_STABILISATION_THRESHOLD` | `3` | Consecutive passing results to exit FLAPPING |
 
+Startup validation rules:
+- `CRITICAL_THRESHOLD > WARNING_THRESHOLD` (both positive integers)
+- `FLAP_TRANSITIONS >= 2`
+- `FLAP_WINDOW_MINUTES > 0`
+- `STABILISATION_THRESHOLD >= 1`
+
 ## Host Config Schema (`config/hosts.yaml`)
 
 ```yaml
@@ -96,10 +136,11 @@ hosts:
 
 Each host requires `label` (string), `host` (string), `ports` (list of ints). Invalid entries are logged and skipped at startup.
 
-## Phase 1 Scope Boundaries
+## Phase 2 Scope Boundaries
 
-Not in scope for Phase 1 (do not implement):
-- Alerting / notifications
+Not in scope for Phase 2 (do not implement):
+- Alert notification dispatch (email, Slack, PagerDuty, webhook)
+- Per-host alert threshold overrides
 - HTTP endpoint checks
 - DNS resolution checks
 - SNMP checks
@@ -114,3 +155,8 @@ Not in scope for Phase 1 (do not implement):
 - Write results in batch per cycle (collect all, then write), not per-probe, to avoid SQLite write contention.
 - `.env` is gitignored — `.env.example` must list all keys with safe placeholder values.
 - `data/` and `logs/` directories must be auto-created at runtime if they don't exist.
+- The `host_address` column was renamed from `host_ip` in Phase 2. `init_database()` includes an `ALTER TABLE ... RENAME COLUMN` migration for existing databases.
+- Flap detection fires **before** threshold escalation in `evaluate_track()` — it short-circuits normal alerting for oscillating tracks.
+- Stabilisation requires **3 consecutive passing results** — stricter than auto-resolve's 1 pass. Asymmetric by design.
+- `count_recent_alerts()` uses SQLite's `datetime('now', ? || ' minutes')` for the rolling window. `triggered_at` values are UTC ISO-8601, matching SQLite's `datetime('now')` which returns UTC.
+- **Test pattern**: database tests use real SQLite via `tempfile.mkdtemp()` (no mocking). Monitor tests use `unittest.mock.patch` on probe and DB functions. Config tests use `patch.dict(os.environ, {}, clear=True)`.
