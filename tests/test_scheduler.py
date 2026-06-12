@@ -12,7 +12,8 @@ class TestStartScheduler(unittest.TestCase):
         mock_scheduler = MagicMock()
         mock_scheduler_cls.return_value = mock_scheduler
 
-        start_scheduler(60, [], 'test.db', 10, 3)
+        config = {'interval': 60, 'hosts': [], 'db_path': 'test.db', 'max_workers': 10, 'probe_timeout': 3}
+        start_scheduler(config)
 
         mock_scheduler_cls.assert_called_once()
 
@@ -22,14 +23,15 @@ class TestStartScheduler(unittest.TestCase):
         mock_scheduler = MagicMock()
         mock_scheduler_cls.return_value = mock_scheduler
 
-        start_scheduler(60, [], 'test.db', 10, 3)
+        config = {'interval': 60, 'hosts': [], 'db_path': 'test.db', 'max_workers': 10, 'probe_timeout': 3}
+        start_scheduler(config)
 
         mock_scheduler.add_job.assert_called_once()
         args, kwargs = mock_scheduler.add_job.call_args
         self.assertEqual(args[0], mock_run_cycle)
         self.assertEqual(args[1], 'interval')
         self.assertEqual(kwargs['seconds'], 60)
-        self.assertEqual(kwargs['args'], ([], 'test.db', 10, 3))
+        self.assertEqual(kwargs['args'], ([], 'test.db', config))
         self.assertEqual(kwargs['max_instances'], 1)
         self.assertEqual(kwargs['misfire_grace_time'], 30)
 
@@ -39,9 +41,10 @@ class TestStartScheduler(unittest.TestCase):
         mock_scheduler = MagicMock()
         mock_scheduler_cls.return_value = mock_scheduler
 
-        start_scheduler(60, [], 'test.db', 10, 3)
+        config = {'interval': 60, 'hosts': [], 'db_path': 'test.db', 'max_workers': 10, 'probe_timeout': 3}
+        start_scheduler(config)
 
-        mock_run_cycle.assert_called_once_with([], 'test.db', 10, 3)
+        mock_run_cycle.assert_called_once_with([], 'test.db', config)
 
     @patch('src.scheduler.run_cycle')
     @patch('src.scheduler.BlockingScheduler')
@@ -49,7 +52,8 @@ class TestStartScheduler(unittest.TestCase):
         mock_scheduler = MagicMock()
         mock_scheduler_cls.return_value = mock_scheduler
 
-        start_scheduler(60, [], 'test.db', 10, 3)
+        config = {'interval': 60, 'hosts': [], 'db_path': 'test.db', 'max_workers': 10, 'probe_timeout': 3}
+        start_scheduler(config)
 
         mock_scheduler.start.assert_called_once()
 
@@ -61,7 +65,8 @@ class TestStartScheduler(unittest.TestCase):
         mock_scheduler.start.side_effect = KeyboardInterrupt
         mock_scheduler_cls.return_value = mock_scheduler
 
-        start_scheduler(60, [], 'test.db', 10, 3)
+        config = {'interval': 60, 'hosts': [], 'db_path': 'test.db', 'max_workers': 10, 'probe_timeout': 3}
+        start_scheduler(config)
 
         mock_scheduler.shutdown.assert_called_once()
         mock_logger.info.assert_called()
@@ -72,7 +77,8 @@ class TestStartScheduler(unittest.TestCase):
         mock_scheduler = MagicMock()
         mock_scheduler_cls.return_value = mock_scheduler
 
-        start_scheduler(120, [], 'test.db', 10, 3)
+        config = {'interval': 120, 'hosts': [], 'db_path': 'test.db', 'max_workers': 10, 'probe_timeout': 3}
+        start_scheduler(config)
 
         args, kwargs = mock_scheduler.add_job.call_args
         self.assertEqual(kwargs['seconds'], 120)
