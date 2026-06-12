@@ -77,7 +77,7 @@ def save_results(db_path: str, results: list[dict[str, Any]]) -> None:
                 (checked_at, host_label, host_address, check_type, port, status, latency_ms)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                 r['host_label'],
                 r['host_address'],
                 r['check_type'],
@@ -304,7 +304,7 @@ def insert_alert(db_path: str, host_label: str, host_address: str, check_type: s
             (triggered_at, host_label, host_address, check_type, port, severity, resolved_at, resolved_reason)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
             host_label,
             host_address,
             check_type,
@@ -334,7 +334,7 @@ def resolve_alert(db_path: str, alert_id: int, reason: str) -> None:
             SET resolved_at = ?, resolved_reason = ?
             WHERE id = ?
         """, (
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
             reason,
             alert_id
         ))
@@ -363,7 +363,7 @@ def resolve_all_open_alerts_for_track(db_path: str, host_address: str, check_typ
             SET resolved_at = ?, resolved_reason = ?
             WHERE host_address = ? AND check_type = ? AND port IS ? AND resolved_at IS NULL
         """, (
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
             reason,
             host_address,
             check_type,

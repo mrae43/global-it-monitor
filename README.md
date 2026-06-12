@@ -2,7 +2,7 @@
 
 A Python-based scheduled monitoring system that probes remote hosts via ICMP ping and TCP port checks, persists results to SQLite, and runs on a configurable schedule.
 
-This is **Phase 1** (Core Monitoring Loop) of a 4-phase project. No alerting, dashboard, or distributed deployment yet — just a reliable probe-collect-store cycle.
+This is **Phase 2** (Alert Engine) of a 4-phase project. The core monitoring loop (Phase 1) is complete, and now includes a stateless alert engine that evaluates thresholds, escalates, and detects flapping — all persisted to SQLite alongside check results. No dashboard or distributed deployment yet.
 
 ## Quick Start
 
@@ -33,6 +33,11 @@ All probe, concurrency, and storage logic uses the Python standard library (`sub
 | `MONITOR_INTERVAL_SECONDS` | `60` | Check cycle interval in seconds |
 | `MONITOR_MAX_WORKERS` | `20` | ThreadPoolExecutor max workers |
 | `MONITOR_PROBE_TIMEOUT` | `3` | Timeout per probe in seconds |
+| `MONITOR_WARNING_THRESHOLD` | `3` | Consecutive failures to trigger WARNING |
+| `MONITOR_CRITICAL_THRESHOLD` | `5` | Consecutive failures to trigger CRITICAL |
+| `MONITOR_FLAP_TRANSITIONS` | `3` | Alert rows within window to trigger FLAPPING |
+| `MONITOR_FLAP_WINDOW_MINUTES` | `10` | Rolling time window for flap detection |
+| `MONITOR_STABILISATION_THRESHOLD` | `3` | Consecutive passing results to exit FLAPPING |
 
 ### Host Targets (`config/hosts.yaml`)
 
@@ -50,9 +55,9 @@ global-it-monitor/
 ├── config/
 │   └── hosts.yaml            # Host targets (committed)
 ├── src/
-│   ├── main.py               # Entry point — starts scheduler
+│   ├── main.py               # Entry point — loads config, validates alerts, init DB, starts scheduler
 │   ├── scheduler.py          # APScheduler setup + cycle runner
-│   ├── monitor.py            # Orchestrates one full check cycle
+│   ├── monitor.py            # Orchestrates one full check cycle (ThreadPoolExecutor) + alert engine
 │   ├── probes/
 │   │   ├── icmp.py           # ICMP ping via subprocess + OS ping
 │   │   └── tcp.py            # TCP port check via socket.connect_ex()
@@ -67,7 +72,8 @@ global-it-monitor/
 │   ├── test_config_loader.py
 │   ├── test_main.py
 │   ├── test_monitor.py
-│   └── test_scheduler.py
+│   ├── test_scheduler.py
+│   └── test_alert_engine.py
 ├── .env.example
 ├── pyproject.toml
 ├── uv.lock
@@ -87,30 +93,43 @@ global-it-monitor/
 | Host config | YAML via `PyYAML` | `pyyaml` |
 | Secrets | `.env` via `python-dotenv` | `python-dotenv` |
 
-See `docs/ADR/monitoring-loop-ADR.md` for full rationale on all 12 ADRs.
+See `docs/ADR/monitoring-loop-ADR.md` for Phase 1 rationale (12 ADRs) and `docs/ADR/alert-engine-ADR.md` for Phase 2 rationale (5 ADRs).
 
 ## Database Schema
 
 ```sql
 CREATE TABLE IF NOT EXISTS check_results (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    checked_at  TEXT    NOT NULL,   -- UTC ISO-8601
+    checked_at  TEXT    NOT NULL,   -- UTC datetime
     host_label  TEXT    NOT NULL,
-    host_ip     TEXT    NOT NULL,
+    host_address TEXT    NOT NULL,
     check_type  TEXT    NOT NULL,   -- 'ICMP' | 'TCP'
     port        INTEGER,            -- NULL for ICMP
     status      TEXT    NOT NULL,   -- 'UP'|'DOWN'|'OPEN'|'CLOSED'
     latency_ms  REAL                -- NULL if unreachable
 );
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    triggered_at    TEXT    NOT NULL,   -- UTC datetime
+    host_label      TEXT    NOT NULL,
+    host_address    TEXT    NOT NULL,
+    check_type      TEXT    NOT NULL,
+    port            INTEGER,
+    severity        TEXT    NOT NULL,   -- 'WARNING' | 'CRITICAL' | 'FLAPPING'
+    resolved_at     TEXT,
+    resolved_reason TEXT                 -- 'RECOVERED' | 'ESCALATED' | 'FLAPPING'
+);
 ```
 
-Append-only writes — no UPDATE or DELETE in Phase 1.
+`check_results` remains append-only. `alerts` is append-dominated with the only mutation being `UPDATE alerts SET resolved_at = ...`.
 
-## Out of Scope (Phase 1)
+## Out of Scope (Phase 2)
 
-- Alerting / notifications (Phase 2)
-- HTTP endpoint checks (Phase 2)
-- DNS resolution checks (Phase 2)
+- Alert notification dispatch (email, Slack, PagerDuty, webhook)
+- Per-host alert threshold overrides
+- HTTP endpoint checks
+- DNS resolution checks
 - SNMP checks (Phase 3)
 - Web dashboard (Phase 4)
 - Distributed / multi-agent deployment (Phase 3)

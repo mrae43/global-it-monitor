@@ -158,5 +158,5 @@ Not in scope for Phase 2 (do not implement):
 - The `host_address` column was renamed from `host_ip` in Phase 2. `init_database()` includes an `ALTER TABLE ... RENAME COLUMN` migration for existing databases.
 - Flap detection fires **before** threshold escalation in `evaluate_track()` — it short-circuits normal alerting for oscillating tracks.
 - Stabilisation requires **3 consecutive passing results** — stricter than auto-resolve's 1 pass. Asymmetric by design.
-- `count_recent_alerts()` uses SQLite's `datetime('now', ? || ' minutes')` for the rolling window. `triggered_at` values are UTC ISO-8601, matching SQLite's `datetime('now')` which returns UTC.
+- `count_recent_alerts()` uses SQLite's `datetime('now', ? || ' minutes')` for the rolling window. `triggered_at` values are stored in SQLite-compatible UTC datetime format (`YYYY-MM-DD HH:MM:SS`), matching SQLite's `datetime('now')` which returns UTC.
 - **Test pattern**: database tests use real SQLite via `tempfile.mkdtemp()` (no mocking). Monitor tests use `unittest.mock.patch` on probe and DB functions. Config tests use `patch.dict(os.environ, {}, clear=True)`.
