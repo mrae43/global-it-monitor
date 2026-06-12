@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.config.loader import load_env, load_hosts, load_config
+from src.config.loader import load_env, load_hosts, load_config, validate_alert_config
 
 
 class TestLoadEnv(unittest.TestCase):
@@ -22,6 +22,11 @@ class TestLoadEnv(unittest.TestCase):
         self.assertEqual(config['log_level'], 'INFO')
         self.assertEqual(config['max_workers'], 20)
         self.assertEqual(config['probe_timeout'], 3)
+        self.assertEqual(config['warning_threshold'], 3)
+        self.assertEqual(config['critical_threshold'], 5)
+        self.assertEqual(config['flap_transitions'], 3)
+        self.assertEqual(config['flap_window_minutes'], 10)
+        self.assertEqual(config['stabilisation_threshold'], 3)
 
     def test_reads_custom_env_vars(self):
         os.environ['MONITOR_DB_PATH'] = 'custom.db'
@@ -29,21 +34,41 @@ class TestLoadEnv(unittest.TestCase):
         os.environ['MONITOR_LOG_LEVEL'] = 'DEBUG'
         os.environ['MONITOR_MAX_WORKERS'] = '10'
         os.environ['MONITOR_PROBE_TIMEOUT'] = '5'
+        os.environ['MONITOR_WARNING_THRESHOLD'] = '4'
+        os.environ['MONITOR_CRITICAL_THRESHOLD'] = '7'
+        os.environ['MONITOR_FLAP_TRANSITIONS'] = '4'
+        os.environ['MONITOR_FLAP_WINDOW_MINUTES'] = '15'
+        os.environ['MONITOR_STABILISATION_THRESHOLD'] = '4'
         config = load_env()
         self.assertEqual(config['db_path'], 'custom.db')
         self.assertEqual(config['interval'], 120)
         self.assertEqual(config['log_level'], 'DEBUG')
         self.assertEqual(config['max_workers'], 10)
         self.assertEqual(config['probe_timeout'], 5)
+        self.assertEqual(config['warning_threshold'], 4)
+        self.assertEqual(config['critical_threshold'], 7)
+        self.assertEqual(config['flap_transitions'], 4)
+        self.assertEqual(config['flap_window_minutes'], 15)
+        self.assertEqual(config['stabilisation_threshold'], 4)
 
     def test_type_casts_integers(self):
         os.environ['MONITOR_INTERVAL_SECONDS'] = '90'
         os.environ['MONITOR_MAX_WORKERS'] = '5'
         os.environ['MONITOR_PROBE_TIMEOUT'] = '1'
+        os.environ['MONITOR_WARNING_THRESHOLD'] = '2'
+        os.environ['MONITOR_CRITICAL_THRESHOLD'] = '4'
+        os.environ['MONITOR_FLAP_TRANSITIONS'] = '2'
+        os.environ['MONITOR_FLAP_WINDOW_MINUTES'] = '5'
+        os.environ['MONITOR_STABILISATION_THRESHOLD'] = '2'
         config = load_env()
         self.assertIsInstance(config['interval'], int)
         self.assertIsInstance(config['max_workers'], int)
         self.assertIsInstance(config['probe_timeout'], int)
+        self.assertIsInstance(config['warning_threshold'], int)
+        self.assertIsInstance(config['critical_threshold'], int)
+        self.assertIsInstance(config['flap_transitions'], int)
+        self.assertIsInstance(config['flap_window_minutes'], int)
+        self.assertIsInstance(config['stabilisation_threshold'], int)
 
     def test_load_dotenv_file_present(self):
         # The .env file in the repo has these values
@@ -52,8 +77,86 @@ class TestLoadEnv(unittest.TestCase):
         os.environ['MONITOR_INTERVAL_SECONDS'] = '60'
         os.environ['MONITOR_MAX_WORKERS'] = '20'
         os.environ['MONITOR_PROBE_TIMEOUT'] = '3'
+        os.environ['MONITOR_WARNING_THRESHOLD'] = '3'
+        os.environ['MONITOR_CRITICAL_THRESHOLD'] = '5'
+        os.environ['MONITOR_FLAP_TRANSITIONS'] = '3'
+        os.environ['MONITOR_FLAP_WINDOW_MINUTES'] = '10'
+        os.environ['MONITOR_STABILISATION_THRESHOLD'] = '3'
         config = load_env()
         self.assertEqual(config['db_path'], 'data/monitor.db')
+
+
+class TestValidateAlertConfig(unittest.TestCase):
+
+    def test_valid_config(self):
+        config = {
+            'warning_threshold': 3,
+            'critical_threshold': 5,
+            'flap_transitions': 3,
+            'flap_window_minutes': 10,
+            'stabilisation_threshold': 3,
+        }
+        validate_alert_config(config)
+
+    def test_critical_less_than_warning(self):
+        config = {
+            'warning_threshold': 5,
+            'critical_threshold': 3,
+            'flap_transitions': 3,
+            'flap_window_minutes': 10,
+            'stabilisation_threshold': 3,
+        }
+        with self.assertRaises(ValueError) as cm:
+            validate_alert_config(config)
+        self.assertIn('CRITICAL_THRESHOLD', str(cm.exception))
+
+    def test_critical_equal_warning(self):
+        config = {
+            'warning_threshold': 3,
+            'critical_threshold': 3,
+            'flap_transitions': 3,
+            'flap_window_minutes': 10,
+            'stabilisation_threshold': 3,
+        }
+        with self.assertRaises(ValueError) as cm:
+            validate_alert_config(config)
+        self.assertIn('CRITICAL_THRESHOLD', str(cm.exception))
+
+    def test_flap_transitions_less_than_2(self):
+        config = {
+            'warning_threshold': 3,
+            'critical_threshold': 5,
+            'flap_transitions': 1,
+            'flap_window_minutes': 10,
+            'stabilisation_threshold': 3,
+        }
+        with self.assertRaises(ValueError) as cm:
+            validate_alert_config(config)
+        self.assertIn('FLAP_TRANSITIONS', str(cm.exception))
+
+    def test_flap_window_minutes_zero(self):
+        config = {
+            'warning_threshold': 3,
+            'critical_threshold': 5,
+            'flap_transitions': 3,
+            'flap_window_minutes': 0,
+            'stabilisation_threshold': 3,
+        }
+        with self.assertRaises(ValueError) as cm:
+            validate_alert_config(config)
+        self.assertIn('FLAP_WINDOW_MINUTES', str(cm.exception))
+
+    def test_stabilisation_threshold_zero(self):
+        config = {
+            'warning_threshold': 3,
+            'critical_threshold': 5,
+            'flap_transitions': 3,
+            'flap_window_minutes': 10,
+            'stabilisation_threshold': 0,
+        }
+        with self.assertRaises(ValueError) as cm:
+            validate_alert_config(config)
+        self.assertIn('STABILISATION_THRESHOLD', str(cm.exception))
 
 
 class TestLoadHosts(unittest.TestCase):

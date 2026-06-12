@@ -2,8 +2,9 @@ import os
 import sys
 from loguru import logger
 from scheduler import start_scheduler
-from config.loader import load_config
+from config.loader import load_config, validate_alert_config
 from storage.database import init_database
+
 
 def main() -> None:
     """Application entry point.
@@ -15,6 +16,13 @@ def main() -> None:
         config = load_config()
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
+        sys.exit(1)
+
+    # Validate alert configuration
+    try:
+        validate_alert_config(config)
+    except ValueError as e:
+        logger.error(f"Invalid alert configuration: {e}")
         sys.exit(1)
 
     # Initialize database
@@ -38,10 +46,8 @@ def main() -> None:
     logger.info("Global IT Infrastructure Monitor starting...")
 
     # Start the scheduler (blocking)
-    start_scheduler(
-        config['interval'], config['hosts'], config['db_path'],
-        config['max_workers'], config['probe_timeout']
-    )
+    start_scheduler(config)
+
 
 if __name__ == "__main__":
     main()

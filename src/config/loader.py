@@ -4,11 +4,14 @@ from typing import Any
 from dotenv import load_dotenv
 import yaml
 
+
 def load_env() -> dict[str, Any]:
     """Load configuration from environment variables with defaults.
 
     Returns:
-        Dict with keys: db_path, interval, log_level, max_workers, probe_timeout.
+        Dict with keys: db_path, interval, log_level, max_workers, probe_timeout,
+        warning_threshold, critical_threshold, flap_transitions, flap_window_minutes,
+        stabilisation_threshold.
     """
     load_dotenv()
     db_path = os.getenv('MONITOR_DB_PATH', 'data/monitor.db')
@@ -16,13 +19,43 @@ def load_env() -> dict[str, Any]:
     log_level = os.getenv('MONITOR_LOG_LEVEL', 'INFO')
     max_workers = int(os.getenv('MONITOR_MAX_WORKERS', '20'))
     probe_timeout = int(os.getenv('MONITOR_PROBE_TIMEOUT', '3'))
+    warning_threshold = int(os.getenv('MONITOR_WARNING_THRESHOLD', '3'))
+    critical_threshold = int(os.getenv('MONITOR_CRITICAL_THRESHOLD', '5'))
+    flap_transitions = int(os.getenv('MONITOR_FLAP_TRANSITIONS', '3'))
+    flap_window_minutes = int(os.getenv('MONITOR_FLAP_WINDOW_MINUTES', '10'))
+    stabilisation_threshold = int(os.getenv('MONITOR_STABILISATION_THRESHOLD', '3'))
     return {
         'db_path': db_path,
         'interval': interval,
         'log_level': log_level,
         'max_workers': max_workers,
         'probe_timeout': probe_timeout,
+        'warning_threshold': warning_threshold,
+        'critical_threshold': critical_threshold,
+        'flap_transitions': flap_transitions,
+        'flap_window_minutes': flap_window_minutes,
+        'stabilisation_threshold': stabilisation_threshold,
     }
+
+
+def validate_alert_config(config: dict[str, Any]) -> None:
+    """Validate alert threshold configuration.
+
+    Raises:
+        ValueError: If thresholds are invalid.
+    """
+    if config['critical_threshold'] <= config['warning_threshold']:
+        raise ValueError(
+            f"CRITICAL_THRESHOLD ({config['critical_threshold']}) must be greater than "
+            f"WARNING_THRESHOLD ({config['warning_threshold']})"
+        )
+    if config['flap_transitions'] < 2:
+        raise ValueError(f"FLAP_TRANSITIONS ({config['flap_transitions']}) must be >= 2")
+    if config['flap_window_minutes'] <= 0:
+        raise ValueError(f"FLAP_WINDOW_MINUTES ({config['flap_window_minutes']}) must be > 0")
+    if config['stabilisation_threshold'] < 1:
+        raise ValueError(f"STABILISATION_THRESHOLD ({config['stabilisation_threshold']}) must be >= 1")
+
 
 def load_hosts(path: str = 'config/hosts.yaml') -> list[dict[str, Any]]:
     """Load and validate host configuration from a YAML file.
@@ -73,6 +106,7 @@ def load_hosts(path: str = 'config/hosts.yaml') -> list[dict[str, Any]]:
         valid_hosts.append({'label': label, 'host': host, 'ports': ports})
 
     return valid_hosts
+
 
 def load_config() -> dict[str, Any]:
     """Load full application configuration from environment and YAML.
