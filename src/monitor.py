@@ -139,19 +139,19 @@ def evaluate_track(db_path: str, result: dict[str, Any], config: dict[str, Any])
         if current_alert and current_alert['severity'] == 'WARNING':
             # Escalation
             resolve_alert(db_path, current_alert['id'], 'ESCALATED')
-            logger.critical(f"Track {host_label} ({host_address}:{port or check_type}) escalated from WARNING to CRITICAL")
+            logger.error(f"Track {host_label} ({host_address}:{port or check_type}) escalated from WARNING to CRITICAL")
             actions['escalated'] += 1
             insert_alert(db_path, host_label, host_address, check_type, port, 'CRITICAL')
-            logger.critical(f"CRITICAL alert fired for {host_label} ({host_address}:{port or check_type})")
+            logger.error(f"CRITICAL alert fired for {host_label} ({host_address}:{port or check_type})")
             actions['fired'].append('CRITICAL')
         elif not current_alert:
             # Jumped threshold or first alert
             insert_alert(db_path, host_label, host_address, check_type, port, 'CRITICAL')
-            logger.critical(f"CRITICAL alert fired for {host_label} ({host_address}:{port or check_type})")
+            logger.error(f"CRITICAL alert fired for {host_label} ({host_address}:{port or check_type})")
             actions['fired'].append('CRITICAL')
         else:
             # Already CRITICAL open
-            pass
+            logger.debug(f"CRITICAL alert already open for {host_label} ({host_address}:{port or check_type}) — skipping")
     elif failures >= warning_threshold:
         if not current_alert:
             insert_alert(db_path, host_label, host_address, check_type, port, 'WARNING')
@@ -159,10 +159,10 @@ def evaluate_track(db_path: str, result: dict[str, Any], config: dict[str, Any])
             actions['fired'].append('WARNING')
         else:
             # Alert already open (WARNING or CRITICAL)
-            pass
+            logger.debug(f"Alert already open for {host_label} ({host_address}:{port or check_type}) — skipping")
     else:
         # Below warning threshold
-        pass
+        logger.debug(f"Below warning threshold ({failures} < {warning_threshold}) for {host_label} ({host_address}:{port or check_type}) — skipping")
 
     return actions
 
