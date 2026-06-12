@@ -33,6 +33,7 @@ def ping(host: str, timeout: int = 3) -> dict[str, Any]:
     cmd = ['ping', count_flag, '1', timeout_flag, timeout_value, host]
 
     try:
+        logger.debug(f"Pinging {host}...")
         result = subprocess.run(
             cmd,
             capture_output=True,
