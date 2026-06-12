@@ -44,6 +44,10 @@ def validate_alert_config(config: dict[str, Any]) -> None:
     Raises:
         ValueError: If thresholds are invalid.
     """
+    if config['warning_threshold'] < 1:
+        raise ValueError(f"WARNING_THRESHOLD ({config['warning_threshold']}) must be >= 1")
+    if config['critical_threshold'] < 1:
+        raise ValueError(f"CRITICAL_THRESHOLD ({config['critical_threshold']}) must be >= 1")
     if config['critical_threshold'] <= config['warning_threshold']:
         raise ValueError(
             f"CRITICAL_THRESHOLD ({config['critical_threshold']}) must be greater than "
