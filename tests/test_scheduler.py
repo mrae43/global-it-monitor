@@ -83,6 +83,25 @@ class TestStartScheduler(unittest.TestCase):
         args, kwargs = mock_scheduler.add_job.call_args
         self.assertEqual(kwargs['seconds'], 120)
 
+    @patch('src.scheduler.logger')
+    @patch('src.scheduler.run_cycle')
+    @patch('src.scheduler.BlockingScheduler')
+    def test_initial_cycle_failure_logged(self, mock_scheduler_cls, mock_run_cycle, mock_logger):
+        mock_scheduler = MagicMock()
+        mock_scheduler_cls.return_value = mock_scheduler
+        mock_run_cycle.side_effect = Exception('initial cycle failed')
+
+        config = {'interval': 60, 'hosts': [], 'db_path': 'test.db', 'max_workers': 10, 'probe_timeout': 3}
+        start_scheduler(config)
+
+        mock_scheduler.start.assert_called_once()
+        mock_logger.error.assert_called()
+        error_calls = [call.args[0] for call in mock_logger.error.call_args_list]
+        self.assertTrue(
+            any('Initial monitoring cycle failed' in str(c) for c in error_calls),
+            f"Expected initial cycle failure in log calls: {error_calls}"
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
