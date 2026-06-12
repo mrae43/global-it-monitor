@@ -30,7 +30,10 @@ def start_scheduler(config: dict[str, Any]) -> None:
 
     # Fire first cycle immediately
     logger.info("Running initial monitoring cycle...")
-    run_cycle(hosts, db_path, config)
+    try:
+        run_cycle(hosts, db_path, config)
+    except Exception as e:
+        logger.error(f"Initial monitoring cycle failed: {e}")
 
     logger.info(f"Starting monitoring loop (interval: {interval}s)")
     try:
