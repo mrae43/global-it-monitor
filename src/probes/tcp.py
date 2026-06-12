@@ -23,6 +23,7 @@ def check_port(host: str, port: int, timeout: float = 3) -> dict[str, Any]:
     sock.settimeout(timeout)
 
     try:
+        logger.debug(f"Checking {host}:{port}...")
         start = time.time()
         result = sock.connect_ex((host, port))
         latency_ms = (time.time() - start) * 1000
