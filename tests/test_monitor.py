@@ -173,6 +173,70 @@ class TestRunCycle(unittest.TestCase):
             run_cycle(hosts, 'test.db', config)
             mock_executor_cls.assert_called_once_with(max_workers=5)
 
+    @patch('src.monitor.evaluate_alerts')
+    @patch('src.monitor.save_results')
+    @patch('src.monitor.ping')
+    @patch('src.monitor.check_port')
+    def test_save_results_failure_logged(self, mock_check_port, mock_ping, mock_save_results, mock_evaluate_alerts):
+        mock_ping.return_value = {'status': 'UP', 'latency_ms': 10.0}
+        mock_check_port.return_value = {'status': 'OPEN', 'latency_ms': 5.0}
+        mock_save_results.side_effect = Exception('db locked')
+        mock_evaluate_alerts.return_value = {'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0}
+
+        with patch('src.monitor.logger') as mock_logger:
+            hosts = [{'label': 'H1', 'host': '10.0.0.1', 'ports': [80]}]
+            config = {'interval': 60, 'max_workers': 20, 'probe_timeout': 3, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
+            run_cycle(hosts, 'test.db', config)
+
+        mock_logger.error.assert_called()
+        error_calls = [call.args[0] for call in mock_logger.error.call_args_list]
+        self.assertTrue(
+            any('Failed to save check results' in str(c) for c in error_calls),
+            f"Expected save_results error in log calls: {error_calls}"
+        )
+
+    @patch('src.monitor.evaluate_alerts')
+    @patch('src.monitor.save_results')
+    @patch('src.monitor.ping')
+    @patch('src.monitor.check_port')
+    def test_evaluate_alerts_failure_logged(self, mock_check_port, mock_ping, mock_save_results, mock_evaluate_alerts):
+        mock_ping.return_value = {'status': 'UP', 'latency_ms': 10.0}
+        mock_check_port.return_value = {'status': 'OPEN', 'latency_ms': 5.0}
+        mock_evaluate_alerts.side_effect = Exception('db locked')
+
+        with patch('src.monitor.logger') as mock_logger:
+            hosts = [{'label': 'H1', 'host': '10.0.0.1', 'ports': [80]}]
+            config = {'interval': 60, 'max_workers': 20, 'probe_timeout': 3, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
+            run_cycle(hosts, 'test.db', config)
+
+        mock_logger.error.assert_called()
+        error_calls = [call.args[0] for call in mock_logger.error.call_args_list]
+        self.assertTrue(
+            any('Alert evaluation failed' in str(c) for c in error_calls),
+            f"Expected evaluate_alerts error in log calls: {error_calls}"
+        )
+
+    @patch('src.monitor.evaluate_alerts')
+    @patch('src.monitor.save_results')
+    @patch('src.monitor.run_checks_for_host')
+    def test_run_cycle_top_level_failure_logged(self, mock_run_checks, mock_save_results, mock_evaluate_alerts):
+        mock_evaluate_alerts.return_value = {'fired': [], 'escalated': 0, 'resolved': 0, 'flapped': 0, 'stabilised': 0}
+
+        with patch('src.monitor.ThreadPoolExecutor') as mock_executor_cls, \
+             patch('src.monitor.logger') as mock_logger:
+            mock_executor_cls.side_effect = RuntimeError('executor crashed')
+
+            hosts = [{'label': 'H1', 'host': '10.0.0.1', 'ports': [80]}]
+            config = {'interval': 60, 'max_workers': 20, 'probe_timeout': 3, 'warning_threshold': 3, 'critical_threshold': 5, 'flap_transitions': 3, 'flap_window_minutes': 10, 'stabilisation_threshold': 3}
+            run_cycle(hosts, 'test.db', config)
+
+        mock_logger.error.assert_called()
+        error_calls = [call.args[0] for call in mock_logger.error.call_args_list]
+        self.assertTrue(
+            any('Monitoring cycle failed' in str(c) for c in error_calls),
+            f"Expected cycle failure in log calls: {error_calls}"
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
