@@ -44,6 +44,7 @@ def main() -> None:
     )
 
     logger.info("Global IT Infrastructure Monitor starting...")
+    logger.info(f"Loaded {len(config['hosts'])} hosts, interval={config['interval']}s")
 
     # Start the scheduler (blocking)
     start_scheduler(config)
