@@ -3,6 +3,8 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+from loguru import logger
+
 CREATE_TABLE_SQL = """CREATE TABLE IF NOT EXISTS check_results (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     checked_at  TEXT NOT NULL,
@@ -58,6 +60,7 @@ def init_database(db_path: str) -> None:
         conn.commit()
     finally:
         conn.close()
+    logger.info(f"Database initialised at {db_path}")
 
 
 def save_results(db_path: str, results: list[dict[str, Any]]) -> None:
@@ -68,6 +71,7 @@ def save_results(db_path: str, results: list[dict[str, Any]]) -> None:
         results: List of result dicts with keys host_label, host_address, check_type,
                  port (optional), status, latency_ms (optional).
     """
+    logger.debug(f"Saving {len(results)} results to {db_path}")
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(CREATE_TABLE_SQL)
@@ -125,6 +129,7 @@ def count_consecutive_failures(db_path: str, host_address: str, check_type: str,
     Returns:
         Number of consecutive failures.
     """
+    logger.debug(f"Counting consecutive failures for {host_address}/{check_type}/{port} (limit={limit})")
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute("""
@@ -157,6 +162,7 @@ def count_consecutive_passes(db_path: str, host_address: str, check_type: str, p
     Returns:
         Number of consecutive passing results.
     """
+    logger.debug(f"Counting consecutive passes for {host_address}/{check_type}/{port} (limit={limit})")
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute("""
@@ -189,6 +195,7 @@ def count_recent_alerts(db_path: str, host_address: str, check_type: str, port: 
     Returns:
         Number of alert rows in the window.
     """
+    logger.debug(f"Counting recent alerts for {host_address}/{check_type}/{port} (window={window_minutes}m)")
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute("""
@@ -297,6 +304,7 @@ def insert_alert(db_path: str, host_label: str, host_address: str, check_type: s
     Returns:
         The id of the inserted alert.
     """
+    logger.debug(f"Inserting {severity} alert for {host_label} ({host_address}/{check_type}/{port})")
     conn = sqlite3.connect(db_path)
     try:
         cursor = conn.execute("""
@@ -327,6 +335,7 @@ def resolve_alert(db_path: str, alert_id: int, reason: str) -> None:
         alert_id: The alert id to resolve.
         reason: 'RECOVERED', 'ESCALATED', or 'FLAPPING'.
     """
+    logger.debug(f"Resolving alert {alert_id} reason={reason}")
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("""
@@ -356,6 +365,7 @@ def resolve_all_open_alerts_for_track(db_path: str, host_address: str, check_typ
     Returns:
         Number of alerts resolved.
     """
+    logger.debug(f"Resolving all open alerts for {host_address}/{check_type}/{port} reason={reason}")
     conn = sqlite3.connect(db_path)
     try:
         cursor = conn.execute("""
@@ -370,6 +380,7 @@ def resolve_all_open_alerts_for_track(db_path: str, host_address: str, check_typ
             port
         ))
         conn.commit()
+        logger.debug(f"Resolved {cursor.rowcount} open alerts for {host_address}/{check_type}/{port}")
         return cursor.rowcount
     finally:
         conn.close()
