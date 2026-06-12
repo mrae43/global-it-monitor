@@ -149,6 +149,22 @@ Not in scope for Phase 2 (do not implement):
 - Hot-reload of config
 - Data retention / auto-purge
 
+## Code Change Best Practices
+
+When modifying or extending the codebase, follow these four principles:
+
+1. **Test at each level — don't integrate prematurely**
+   Each layer (probes, storage, config, scheduler, alert engine) must be independently testable and verified before wiring it into the next layer. Do not move to Step 3 (DB integration) until Step 2 (probe logic) is solid. Keep tests passing at every commit.
+
+2. **Use type hints and docstrings**
+   All new functions and classes must include type hints and docstrings. This is the contract for future maintainers and for static-analysis tooling.
+
+3. **Log strategically**
+   Use `loguru` from the start. Log at meaningful decision points (probe dispatch, threshold crossings, alert state transitions, config skips, DB write batches). Avoid noisy debug logs inside tight loops; prefer a single summary line per cycle.
+
+4. **Handle errors gracefully**
+   A single bad host or malformed config entry must never crash the whole system. Catch and log exceptions at the probe level, the per-host thread level, and the cycle level. Continue with the remaining hosts.
+
 ## Gotchas
 
 - `check_same_thread=False` may be needed if SQLite connections are shared across threads in the pool.
